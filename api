@@ -1,0 +1,50 @@
+# VercelのPythonサーバーレス関数は、この形式で書くのが標準です。
+from http.server import BaseHTTPRequestHandler
+import json
+import yfinance as yf
+
+class handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        # リクエストボディを取得
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length)
+
+        try:
+            request_body = json.loads(post_data)
+            ticker_symbol = request_body.get('ticker')
+
+            if not ticker_symbol:
+                self.send_response(400)
+                self.send_header('Content-type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "ticker is required"}).encode('utf-8'))
+                return
+
+            # yfinanceで株価を取得
+            ticker = yf.Ticker(ticker_symbol)
+            info = ticker.info
+            price = info.get('currentPrice') or info.get('regularMarketPrice') or info.get('previousClose')
+
+            if price is None:
+                raise ValueError("Price not found")
+
+            response_data = {
+                "companyName": info.get('shortName'),
+                "price": price,
+                "currency": info.get('currency', 'JPY')
+            }
+
+            # 成功レスポンスを返す
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps(response_data).encode('utf-8'))
+
+        except Exception as e:
+            # エラーレスポンスを返す
+            self.send_response(500)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+
+        return
